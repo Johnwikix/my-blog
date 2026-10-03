@@ -1,115 +1,41 @@
-<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>告别 Hexo：从零造一个「信号实验室」 · Sennpei Studio</title><meta name="description" content="为什么放弃 Hexo，用 Astro 从零重建这个博客——设计思路、GLSL 星云背景、伪 FFT 频谱，以及一条命令的部署流。"><meta name="generator" content="Astro v5.18.2"><meta property="og:title" content="告别 Hexo：从零造一个「信号实验室」 · Sennpei Studio"><meta property="og:description" content="为什么放弃 Hexo，用 Astro 从零重建这个博客——设计思路、GLSL 星云背景、伪 FFT 频谱，以及一条命令的部署流。"><meta property="og:type" content="website"><link rel="icon" type="image/svg+xml" href="/my-blog/favicon.svg"><link rel="alternate" type="application/rss+xml" title="Sennpei Studio" href="/my-blog/rss.xml"><meta name="theme-color" content="#06070d"><link rel="stylesheet" href="/my-blog/_astro/about.BlrTMlrR.css">
-<link rel="stylesheet" href="/my-blog/_astro/_slug_.WH6SnyVn.css"></head> <body> <canvas id="nebula" aria-hidden="true" data-astro-cid-xaxozevl></canvas>  <script type="module">const o=document.getElementById("nebula"),E=window.matchMedia("(prefers-reduced-motion: reduce)").matches;if(o&&!E){const e=o.getContext("webgl",{antialias:!1,alpha:!1,powerPreference:"low-power"});if(e){let v=function(t,f){const l=e.createShader(t);return e.shaderSource(l,f),e.compileShader(l),l},d=function(){const t=Math.min(window.devicePixelRatio,2)*.5;o.width=Math.floor(window.innerWidth*t),o.height=Math.floor(window.innerHeight*t),e.viewport(0,0,o.width,o.height)},r=function(t){if(c+=(u-c)*.02,s+=(h-s)*.02,t-g>33){for(g=t,e.uniform2f(x,o.width,o.height),e.uniform1f(R,(t-p)/1e3),e.uniform2f(y,c,s),e.drawArrays(e.TRIANGLES,0,3),a.push(t);a.length>2&&a[0]<t-1e3;)a.shift();const f=a.length;document.dispatchEvent(new CustomEvent("signal:fps",{detail:{fps:f,dt:Math.round(t-p)%1e5}}))}n=requestAnimationFrame(r)};const w=`
-        attribute vec2 p;
-        void main() { gl_Position = vec4(p, 0.0, 1.0); }
-      `,b=`
-        precision mediump float;
-        uniform vec2 uRes;
-        uniform float uT;
-        uniform vec2 uM;
-
-        float hash(vec2 p) {
-          p = fract(p * vec2(234.34, 435.345));
-          p += dot(p, p + 34.23);
-          return fract(p.x * p.y);
-        }
-
-        float noise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
-          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-        }
-
-        float fbm(vec2 p) {
-          float v = 0.0;
-          float amp = 0.5;
-          mat2 rot = mat2(0.87, -0.49, 0.49, 0.87);
-          for (int i = 0; i < 5; i++) {
-            v += amp * noise(p);
-            p = rot * p * 2.03;
-            amp *= 0.5;
-          }
-          return v;
-        }
-
-        void main() {
-          vec2 uv = gl_FragCoord.xy / uRes.xy;
-          vec2 asp = vec2(uRes.x / uRes.y, 1.0);
-          vec2 st = uv * asp;
-
-          float t = uT * 0.03;
-          vec2 drift = uM * 0.12;
-
-          // domain warp
-          vec2 q = vec2(fbm(st * 1.6 + t), fbm(st * 1.6 - t * 0.7 + 4.7));
-          vec2 r = vec2(fbm(st * 2.2 + q * 1.4 + vec2(1.7, 9.2) + t * 0.6 + drift),
-                        fbm(st * 2.2 + q * 1.4 + vec2(8.3, 2.8) - t * 0.4 + drift));
-          float n = fbm(st * 1.4 + r * 1.8);
-
-          // palette: indigo space, violet clouds, cyan ridges
-          vec3 space = vec3(0.024, 0.028, 0.055);
-          vec3 violet = vec3(0.24, 0.17, 0.42);
-          vec3 cyan   = vec3(0.16, 0.55, 0.62);
-
-          vec3 col = space;
-          col = mix(col, violet * 0.85, smoothstep(0.35, 0.9, n));
-          col = mix(col, cyan * 0.6, smoothstep(0.62, 0.95, n * r.x * 1.6));
-
-          // scan bands — analyzer breathing, very subtle
-          float band = 0.96 + 0.04 * sin(uv.y * 220.0 + uT * 1.4 + n * 6.0);
-          col *= band;
-
-          // vignette
-          float vig = smoothstep(1.25, 0.35, length(uv - vec2(0.5, 0.45)));
-          col *= mix(0.72, 1.0, vig);
-
-          gl_FragColor = vec4(col, 1.0);
-        }
-      `,i=e.createProgram();e.attachShader(i,v(e.VERTEX_SHADER,w)),e.attachShader(i,v(e.FRAGMENT_SHADER,b)),e.linkProgram(i),e.useProgram(i);const A=e.createBuffer();e.bindBuffer(e.ARRAY_BUFFER,A),e.bufferData(e.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),e.STATIC_DRAW);const m=e.getAttribLocation(i,"p");e.enableVertexAttribArray(m),e.vertexAttribPointer(m,2,e.FLOAT,!1,0,0);const x=e.getUniformLocation(i,"uRes"),R=e.getUniformLocation(i,"uT"),y=e.getUniformLocation(i,"uM");d(),window.addEventListener("resize",d,{passive:!0});let c=0,s=0,u=0,h=0;window.addEventListener("pointermove",t=>{u=t.clientX/window.innerWidth*2-1,h=t.clientY/window.innerHeight*2-1},{passive:!0});const p=performance.now();let n=0,g=0;const a=[];n=requestAnimationFrame(r),document.addEventListener("visibilitychange",()=>{document.hidden?cancelAnimationFrame(n):n=requestAnimationFrame(r)})}}</script> <header class="nav" data-astro-cid-dmqpwcec> <div class="shell nav-in" data-astro-cid-dmqpwcec> <a class="brand" href="/my-blog/" data-astro-cid-dmqpwcec> <span class="brand-mark" aria-hidden="true" data-astro-cid-dmqpwcec></span> <span class="brand-text mono" data-astro-cid-dmqpwcec>SENNPEI<span class="brand-dot" data-astro-cid-dmqpwcec>.</span>STUDIO</span> </a> <nav aria-label="主导航" data-astro-cid-dmqpwcec> <ul data-astro-cid-dmqpwcec> <li data-astro-cid-dmqpwcec> <a href="/my-blog/blog" class="active" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>日志</span> <span class="en mono" data-astro-cid-dmqpwcec>LOG</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/projects" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>机架</span> <span class="en mono" data-astro-cid-dmqpwcec>RACK</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/about" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>关于</span> <span class="en mono" data-astro-cid-dmqpwcec>ABOUT</span> </a> </li> </ul> </nav> <div class="live mono" title="本站由静态生成，正在渲染中——就像所有好东西一样" data-astro-cid-dmqpwcec> <span class="dot" aria-hidden="true" data-astro-cid-dmqpwcec></span>REC
-</div> </div> </header>  <main>  <article class="shell-narrow" data-astro-cid-7jjqptxk> <header class="post-head" data-astro-cid-7jjqptxk> <p class="eyebrow" data-astro-cid-7jjqptxk>// ENTRY · <span class="sig" data-astro-cid-7jjqptxk>2026-10-03</span></p> <h1 data-astro-cid-7jjqptxk>告别 Hexo：从零造一个「信号实验室」</h1> <p class="desc" data-astro-cid-7jjqptxk>为什么放弃 Hexo，用 Astro 从零重建这个博客——设计思路、GLSL 星云背景、伪 FFT 频谱，以及一条命令的部署流。</p> <div class="meta" data-astro-cid-7jjqptxk> <div class="tags" data-astro-cid-7jjqptxk> <span class="tag tag--cy" data-astro-cid-7jjqptxk>博客</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>Astro</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>Web</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>设计</span> </div>  </div> </header> <div class="prose" data-astro-cid-7jjqptxk> <p>你正在看的这个站，是我在一个下午从零造出来的。它替换掉了服役多时的 Hexo 博客。这篇日志记录为什么走、怎么建的，以及那些「设计师朋友看了会沉默」的个人趣味。</p>
-<h2 id="为什么离开-hexo">为什么离开 Hexo</h2>
-<p>Hexo 没做错什么，它只是不属于我：</p>
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>从 Hexo 迁到 Astro: 一个博客的简化 | sennpei.studio</title><meta name="description" content="为什么换掉 Hexo, Astro 的 Content Collections, 字体本地打包, 部署通道."><meta name="generator" content="Astro v5.18.2"><meta property="og:title" content="从 Hexo 迁到 Astro: 一个博客的简化 | sennpei.studio"><meta property="og:description" content="为什么换掉 Hexo, Astro 的 Content Collections, 字体本地打包, 部署通道."><meta property="og:type" content="website"><link rel="icon" type="image/svg+xml" href="/my-blog/favicon.svg"><link rel="alternate" type="application/rss+xml" title="sennpei.studio" href="/my-blog/rss.xml"><meta name="theme-color" content="#0a0a0a"><link rel="stylesheet" href="/my-blog/_astro/about.Bqf0Fy38.css"></head> <body> <header class="nav"> <div class="nav-in"> <a class="brand" href="/my-blog/"> <span class="brand-name">sennpei</span><span style="color: var(--dim);">.</span><span style="color: var(--ink);">studio</span> </a> <nav class="menu" aria-label="primary"> <ul> <li> <a href="/my-blog/blog" class="active"> log </a> </li><li> <a href="/my-blog/projects" class> rack </a> </li><li> <a href="/my-blog/about" class> about </a> </li> </ul> </nav> <span class="menu-spacer"></span> <span class="menu-tag">/my-blog</span> </div> </header> <main>  <article class="shell-narrow"> <div class="page-head"> <p style="font-size: 0.85rem; color: var(--dim); margin-bottom: 0.4rem;"> 2026-10-03 · blog · astro · web </p> <h1>从 Hexo 迁到 Astro: 一个博客的简化</h1> <p class="sub">为什么换掉 Hexo, Astro 的 Content Collections, 字体本地打包, 部署通道.</p> </div> <div class="prose"> <h1 id="hexo--astro">Hexo → Astro</h1>
+<h2 id="为什么走">为什么走</h2>
+<p>Hexo 没做错.  它只是不属于我:</p>
 <ul>
-<li><strong>主题的诅咒</strong>。Volantis/Landscape 都是好主题，但「换主题 = 换博客」的模型意味着外观永远在别人的审美体系里打转。我想要的每一个像素——从字距到导航条上那个 REC 呼吸灯——都得跟主题的 CSS 体系搏斗。</li>
-<li><strong>构建模型的年代感</strong>。整站数据库 <code>db.json</code>、生成器插件满天飞、主题 EJS 模板继承链。改一处样式，心智负担在三套约定里切换。</li>
-<li>我写的 C# 项目里连 GC 停顿都要锱铢必较，没有理由容忍自己的博客跑在「默认主题 + 三十个插件」上。</li>
+<li><strong>主题的诅咒</strong>.  Volantis/Landscape 都是好主题.  但”换主题 = 换博客” 的模型意味着外观永远在别人的审美体系里打转.</li>
+<li><strong>构建模型的年代感</strong>.  整站 <code>db.json</code>, 生成器插件满天飞, 主题 EJS 模板继承链.</li>
+<li>我写的 C# 项目里 GC 停顿都要锱铢必较.  没理由容忍自己博客跑在”默认主题 + 三十个插件”上.</li>
 </ul>
-<p>核心诉求其实只有三条：<strong>Markdown 写作、静态输出到 GitHub Pages、每个像素自己说了算</strong>。</p>
-<h2 id="选型astro">选型：Astro</h2>
-<p>评估了 Hugo（Go 模板，快，但定制体验同 Hexo 一个流派）、Next.js（为一个博客引入 React 运行时，杀鸡用牛刀）之后选了 <strong>Astro</strong>：</p>
+<p>核心诉求就三条: <strong>Markdown 写作, 静态输出到 GitHub Pages, 每个像素自己说了算</strong>.</p>
+<h2 id="选型">选型</h2>
 <ul>
-<li><strong>Content Collections</strong>：<code>src/content/blog/</code> 里丢 <code>.md</code> 文件，frontmatter 有 zod schema 校验，slug、日期、标签类型错了直接构建失败——这很 native 开发者的口味；</li>
-<li><strong>默认零 JS</strong>：页面是纯静态 HTML，JS 只出现在我手写的地方。这个博客全部运行时 JS 只有两块：shader 和频谱，加起来不到 8KB；</li>
-<li><strong>组件即文件</strong>：<code>.astro</code> 单文件组件，模板 + 样式作用域隔离，没有一个全局 CSS 类需要「覆盖主题默认值」。</li>
+<li><strong>Hugo</strong>: Go 模板快.  定制体验同 Hexo 一个流派.</li>
+<li><strong>Next.js</strong>: 为一个博客引入 React 运行时.  杀鸡用牛刀.</li>
+<li><strong>Astro</strong>: Content Collections + 默认零 JS + 组件即文件.  选它.</li>
 </ul>
-<p>Shiki 高亮内置，<code>ayu-dark</code> 和配色刚好一组。字体走 <code>@fontsource</code> 本地打包（Space Grotesk / Noto Sans SC / JetBrains Mono），不依赖 Google Fonts——国内访问的痛点懂的都懂。</p>
-<h2 id="设计信号实验室">设计：信号实验室</h2>
-<p>我给自己的命题是：<strong>这个博客看起来应该像谁写的？</strong> 答案是——像我的 GitHub 主页写的：一个在 Windows 上折腾音频和 GPU 的人。所以整站的概念定为「信号实验室」：</p>
+<p>Content Collections: <code>src/content/blog/</code> 丢 <code>.md</code>, frontmatter zod schema 校验.  错了直接构建失败.  很 native 开发者的口味.</p>
+<p>默认零 JS: 页面纯静态 HTML, JS 只出现在我手写的地方.  这博客全部运行时 JS 没有 — 没有 shader, 没有频谱, 没有动画.  加起来 0 KB.</p>
+<p>Shiki 高亮内置, <code>ayu-dark</code> 顺手.  字体走 fontsource 本地打包 (JetBrains Mono / Noto Sans SC / Space Grotesk 都不需要), 不依赖 Google Fonts.</p>
+<h2 id="部署">部署</h2>
+<p>沿用 Hexo 通道: 本地构建 <code>dist/</code>, 推送到 GitHub Pages 服务的分支:</p>
+<pre class="astro-code ayu-dark" style="background-color:#0d1017;color:#bfbdb6; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="plaintext"><code><span class="line"><span>npm run deploy    # astro build + push dist → my-blog repo main</span></span></code></pre>
+<p>写作:</p>
+<pre class="astro-code ayu-dark" style="background-color:#0d1017;color:#bfbdb6; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="plaintext"><code><span class="line"><span>src/content/blog/foo.md</span></span>
+<span class="line"><span>---</span></span>
+<span class="line"><span>title: 标题</span></span>
+<span class="line"><span>description: 摘要</span></span>
+<span class="line"><span>pubDate: 2026-10-03</span></span>
+<span class="line"><span>tags: ['audio']</span></span>
+<span class="line"><span>---</span></span>
+<span class="line"><span>正文</span></span></code></pre>
+<p><code>npm run dev</code> 预览, <code>npm run deploy</code> 发布.</p>
+<h2 id="旧文">旧文</h2>
+<p>旧博客只有一篇默认 Hello World.  不搬运, 让它留在历史.</p>
+<h2 id="接下来">接下来</h2>
+<p>日志会聚焦三个方向:</p>
 <ul>
-<li><strong>首页背景是一片实时渲染的 GLSL 星云</strong>——WebGL fragment shader，fbm 域扭曲噪声，青→紫的配色。它是我 ComputeSharpDemo 里那些体积云 shader 的 WebGL 方言版，鼠标移动会轻微扰动漂移方向。</li>
-<li><strong>伪 FFT 频谱条</strong>出现在英雄区读数面板和页脚——canvas 2D 画的 42 段假频谱，快攻慢放的包络模拟真实 RMS 表头的坠落感。这是对我播放器频谱可视化的致意。</li>
-<li><strong>HUD 读数面板</strong>：<code>AUDIO 44.1k–768k · DSD512</code>、<code>RENDER DXR 1.2 · 2 SPP</code>——这些数字都是真的，来自我的项目。</li>
-<li>页脚有一个<strong>真实的 fps 读数</strong>，事件总线从 shader 的 rAF 循环里广播出来——一切装饰都必须是真的，这是原则。</li>
+<li>音频管线 (播放器架构深水区)</li>
+<li>渲染 (DXR/ComputeSharp 踩坑实录)</li>
+<li>.NET native 开发日常</li>
 </ul>
-<p>性能上做了克制：shader 半分辨率渲染 + 30fps 节流（它是氛围层，不需要吃满 GPU）；<code>prefers-reduced-motion</code> 时频谱静止、shader 换成静态渐变。</p>
-<h2 id="部署一条命令">部署：一条命令</h2>
-<p>沿用原来 Hexo 的部署通道——本地构建出 <code>dist/</code>，脚本推到 GitHub Pages 服务的分支：</p>
-<pre class="astro-code ayu-dark" style="background-color:#0d1017;color:#bfbdb6; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#59C2FF">npm</span><span style="color:#AAD94C"> run</span><span style="color:#AAD94C"> deploy</span><span style="color:#5A6673;font-style:italic">   # astro build + 推送 dist 到 my-blog 仓库</span></span></code></pre>
-<p>写作流程则简单到没有仪式感：</p>
-<pre class="astro-code ayu-dark" style="background-color:#0d1017;color:#bfbdb6; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="bash"><code><span class="line"><span style="color:#5A6673;font-style:italic"># src/content/blog/ 里新建 .md</span></span>
-<span class="line"><span style="color:#59C2FF">---</span></span>
-<span class="line"><span style="color:#59C2FF">title:</span><span style="color:#AAD94C"> 标题</span></span>
-<span class="line"><span style="color:#59C2FF">description:</span><span style="color:#AAD94C"> 摘要</span></span>
-<span class="line"><span style="color:#59C2FF">pubDate:</span><span style="color:#AAD94C"> 2026-10-03</span></span>
-<span class="line"><span style="color:#59C2FF">tags:</span><span style="color:#BFBDB6"> [</span><span style="color:#AAD94C">'音频'</span><span style="color:#BFBDB6">]</span></span>
-<span class="line"><span style="color:#59C2FF">---</span></span>
-<span class="line"><span style="color:#59C2FF">正文……</span></span></code></pre>
-<p><code>npm run dev</code> 本地预览，<code>npm run deploy</code> 发布。仓库里另附了 GitHub Actions 工作流，想切全自动构建部署也只是一次开关的事。</p>
-<h2 id="旧文与新起点">旧文与新起点</h2>
-<p>旧博客只有一篇默认的 Hello World——就不搬运了，让它体面地留在历史里。接下来的日志会聚焦三个方向：音频管线（播放器架构的深水区）、渲染（DXR/ComputeSharp 的踩坑实录）、以及 .NET native 开发的日常。</p>
-<p>欢迎来到信号实验室。示波器已上电。</p> </div> <nav class="pager" aria-label="文章导航" data-astro-cid-7jjqptxk> <a class="pn" href="/my-blog/blog/dxr-from-scratch/" data-astro-cid-7jjqptxk> <span class="dir mono" data-astro-cid-7jjqptxk>← 较早</span> <span class="t" data-astro-cid-7jjqptxk>从零实现 DXR 路径追踪：雨后便利店的两百万个三角形</span> </a> <span data-astro-cid-7jjqptxk></span> </nav> </article>  </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="shell" data-astro-cid-sz7xmlte> <canvas id="footer-spec" class="spectrum " height="56" role="img" aria-label="音频频谱装饰动画" data-astro-cid-zsbzwz7w></canvas>  <script type="module">const A=window.matchMedia("(prefers-reduced-motion: reduce)").matches;function R(e){const o=e.getContext("2d");if(!o)return;const r=42,i=new Float32Array(r),a=Math.min(window.devicePixelRatio,2);function p(){e.width=Math.floor(e.clientWidth*a),e.height=Math.floor(e.clientHeight*a)}p(),window.addEventListener("resize",p,{passive:!0});function y(c,d){const n=c/r,s=Math.exp(-n*4),u=Math.sin(d*(.9+n*2.2)+c*.7)*.5+Math.sin(d*(2.1+n*3.7)+c*1.9)*.3+Math.sin(d*(4.3+n*1.1)+c*.3)*.2,h=.18+.82*(s*.9+.25)*(.5+.5*u);return Math.min(1,Math.max(.03,h))}performance.now();function b(c){const d=c/1e3,n=e.width,s=e.height,u=Math.max(1,Math.floor(n*.006)),h=(n-u*(r-1))/r;for(let t=0;t<r;t++){const l=A?.35:y(t,d);i[t]=l>i[t]?i[t]+(l-i[t])*.55:i[t]*.92}o.clearRect(0,0,n,s);for(let t=0;t<r;t++){const l=i[t],x=Math.max(2*a,l*(s-4*a)),S=t*(h+u),f=s-x,m=o.createLinearGradient(0,f,0,s),M=t/r,g=Math.round(110+57*M),w=Math.round(231+-92*M),$=Math.round(240+10*M);m.addColorStop(0,`rgba(${g},${w},${$},${.55+l*.45})`),m.addColorStop(1,`rgba(${g},${w},${$},0.14)`),o.fillStyle=m,o.beginPath(),o.roundRect(S,f,h,x,2*a),o.fill(),o.fillStyle=`rgba(${g},${w},${$},${.8})`,o.fillRect(S,f,h,1.5*a)}requestAnimationFrame(b)}requestAnimationFrame(b)}document.querySelectorAll("canvas.spectrum").forEach(e=>{e.dataset.live||(e.dataset.live="1",R(e))});</script> <div class="readout mono" data-astro-cid-sz7xmlte> <span data-astro-cid-sz7xmlte>44.1k → 768kHz</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span id="fps-readout" data-astro-cid-sz7xmlte>-- fps</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span data-astro-cid-sz7xmlte>© 2026 SENNPEI STUDIO</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="/my-blog/rss.xml" class="lnk" data-astro-cid-sz7xmlte>RSS</a> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="https://github.com/Johnwikix" target="_blank" rel="noopener" class="lnk" data-astro-cid-sz7xmlte>GITHUB</a> </div> </div> </footer>  <script type="module">const e=document.getElementById("fps-readout");e&&document.addEventListener("signal:fps",(t=>{e.textContent=`${t.detail.fps} fps`}));</script> </body></html> 
+<p>— sennpei.studio, 2026-10-03</p> </div> <nav class="pager"> <a href="/my-blog/blog/dxr-from-scratch/"> <div class="dir">← older</div> <div class="pager-t">DXRDemo: 从零手搓 DXR 路径追踪</div> </a> <span></span> </nav> </article>  </main> <footer class="footer"> <div class="footer-line"> <span>© 2026 sennpei.studio</span> <span class="footer-sep">·</span> <a href="/my-blog/rss.xml">rss</a> <span class="footer-sep">·</span> <a href="https://github.com/Johnwikix" target="_blank" rel="noopener">github.com/Johnwikix</a> <span class="footer-sep">·</span> <a href="mailto:906847109@qq.com">906847109@qq.com</a> </div> </footer> </body></html>

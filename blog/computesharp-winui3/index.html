@@ -1,79 +1,6 @@
-<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>用 C# 写 Compute Shader：ComputeSharp 实战笔记 · Sennpei Studio</title><meta name="description" content="把 Shadertoy 的体积云搬进 WinUI 3 窗口——ComputeSharp 的 HLSL 源生成器、SwapChainPanel 的 DPI 坑，以及 HDR 检测的正确姿势。"><meta name="generator" content="Astro v5.18.2"><meta property="og:title" content="用 C# 写 Compute Shader：ComputeSharp 实战笔记 · Sennpei Studio"><meta property="og:description" content="把 Shadertoy 的体积云搬进 WinUI 3 窗口——ComputeSharp 的 HLSL 源生成器、SwapChainPanel 的 DPI 坑，以及 HDR 检测的正确姿势。"><meta property="og:type" content="website"><link rel="icon" type="image/svg+xml" href="/my-blog/favicon.svg"><link rel="alternate" type="application/rss+xml" title="Sennpei Studio" href="/my-blog/rss.xml"><meta name="theme-color" content="#06070d"><link rel="stylesheet" href="/my-blog/_astro/about.BlrTMlrR.css">
-<link rel="stylesheet" href="/my-blog/_astro/_slug_.WH6SnyVn.css"></head> <body> <canvas id="nebula" aria-hidden="true" data-astro-cid-xaxozevl></canvas>  <script type="module">const o=document.getElementById("nebula"),E=window.matchMedia("(prefers-reduced-motion: reduce)").matches;if(o&&!E){const e=o.getContext("webgl",{antialias:!1,alpha:!1,powerPreference:"low-power"});if(e){let v=function(t,f){const l=e.createShader(t);return e.shaderSource(l,f),e.compileShader(l),l},d=function(){const t=Math.min(window.devicePixelRatio,2)*.5;o.width=Math.floor(window.innerWidth*t),o.height=Math.floor(window.innerHeight*t),e.viewport(0,0,o.width,o.height)},r=function(t){if(c+=(u-c)*.02,s+=(h-s)*.02,t-g>33){for(g=t,e.uniform2f(x,o.width,o.height),e.uniform1f(R,(t-p)/1e3),e.uniform2f(y,c,s),e.drawArrays(e.TRIANGLES,0,3),a.push(t);a.length>2&&a[0]<t-1e3;)a.shift();const f=a.length;document.dispatchEvent(new CustomEvent("signal:fps",{detail:{fps:f,dt:Math.round(t-p)%1e5}}))}n=requestAnimationFrame(r)};const w=`
-        attribute vec2 p;
-        void main() { gl_Position = vec4(p, 0.0, 1.0); }
-      `,b=`
-        precision mediump float;
-        uniform vec2 uRes;
-        uniform float uT;
-        uniform vec2 uM;
-
-        float hash(vec2 p) {
-          p = fract(p * vec2(234.34, 435.345));
-          p += dot(p, p + 34.23);
-          return fract(p.x * p.y);
-        }
-
-        float noise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f);
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
-          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-        }
-
-        float fbm(vec2 p) {
-          float v = 0.0;
-          float amp = 0.5;
-          mat2 rot = mat2(0.87, -0.49, 0.49, 0.87);
-          for (int i = 0; i < 5; i++) {
-            v += amp * noise(p);
-            p = rot * p * 2.03;
-            amp *= 0.5;
-          }
-          return v;
-        }
-
-        void main() {
-          vec2 uv = gl_FragCoord.xy / uRes.xy;
-          vec2 asp = vec2(uRes.x / uRes.y, 1.0);
-          vec2 st = uv * asp;
-
-          float t = uT * 0.03;
-          vec2 drift = uM * 0.12;
-
-          // domain warp
-          vec2 q = vec2(fbm(st * 1.6 + t), fbm(st * 1.6 - t * 0.7 + 4.7));
-          vec2 r = vec2(fbm(st * 2.2 + q * 1.4 + vec2(1.7, 9.2) + t * 0.6 + drift),
-                        fbm(st * 2.2 + q * 1.4 + vec2(8.3, 2.8) - t * 0.4 + drift));
-          float n = fbm(st * 1.4 + r * 1.8);
-
-          // palette: indigo space, violet clouds, cyan ridges
-          vec3 space = vec3(0.024, 0.028, 0.055);
-          vec3 violet = vec3(0.24, 0.17, 0.42);
-          vec3 cyan   = vec3(0.16, 0.55, 0.62);
-
-          vec3 col = space;
-          col = mix(col, violet * 0.85, smoothstep(0.35, 0.9, n));
-          col = mix(col, cyan * 0.6, smoothstep(0.62, 0.95, n * r.x * 1.6));
-
-          // scan bands — analyzer breathing, very subtle
-          float band = 0.96 + 0.04 * sin(uv.y * 220.0 + uT * 1.4 + n * 6.0);
-          col *= band;
-
-          // vignette
-          float vig = smoothstep(1.25, 0.35, length(uv - vec2(0.5, 0.45)));
-          col *= mix(0.72, 1.0, vig);
-
-          gl_FragColor = vec4(col, 1.0);
-        }
-      `,i=e.createProgram();e.attachShader(i,v(e.VERTEX_SHADER,w)),e.attachShader(i,v(e.FRAGMENT_SHADER,b)),e.linkProgram(i),e.useProgram(i);const A=e.createBuffer();e.bindBuffer(e.ARRAY_BUFFER,A),e.bufferData(e.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),e.STATIC_DRAW);const m=e.getAttribLocation(i,"p");e.enableVertexAttribArray(m),e.vertexAttribPointer(m,2,e.FLOAT,!1,0,0);const x=e.getUniformLocation(i,"uRes"),R=e.getUniformLocation(i,"uT"),y=e.getUniformLocation(i,"uM");d(),window.addEventListener("resize",d,{passive:!0});let c=0,s=0,u=0,h=0;window.addEventListener("pointermove",t=>{u=t.clientX/window.innerWidth*2-1,h=t.clientY/window.innerHeight*2-1},{passive:!0});const p=performance.now();let n=0,g=0;const a=[];n=requestAnimationFrame(r),document.addEventListener("visibilitychange",()=>{document.hidden?cancelAnimationFrame(n):n=requestAnimationFrame(r)})}}</script> <header class="nav" data-astro-cid-dmqpwcec> <div class="shell nav-in" data-astro-cid-dmqpwcec> <a class="brand" href="/my-blog/" data-astro-cid-dmqpwcec> <span class="brand-mark" aria-hidden="true" data-astro-cid-dmqpwcec></span> <span class="brand-text mono" data-astro-cid-dmqpwcec>SENNPEI<span class="brand-dot" data-astro-cid-dmqpwcec>.</span>STUDIO</span> </a> <nav aria-label="主导航" data-astro-cid-dmqpwcec> <ul data-astro-cid-dmqpwcec> <li data-astro-cid-dmqpwcec> <a href="/my-blog/blog" class="active" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>日志</span> <span class="en mono" data-astro-cid-dmqpwcec>LOG</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/projects" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>机架</span> <span class="en mono" data-astro-cid-dmqpwcec>RACK</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/about" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>关于</span> <span class="en mono" data-astro-cid-dmqpwcec>ABOUT</span> </a> </li> </ul> </nav> <div class="live mono" title="本站由静态生成，正在渲染中——就像所有好东西一样" data-astro-cid-dmqpwcec> <span class="dot" aria-hidden="true" data-astro-cid-dmqpwcec></span>REC
-</div> </div> </header>  <main>  <article class="shell-narrow" data-astro-cid-7jjqptxk> <header class="post-head" data-astro-cid-7jjqptxk> <p class="eyebrow" data-astro-cid-7jjqptxk>// ENTRY · <span class="sig" data-astro-cid-7jjqptxk>2026-09-24</span></p> <h1 data-astro-cid-7jjqptxk>用 C# 写 Compute Shader：ComputeSharp 实战笔记</h1> <p class="desc" data-astro-cid-7jjqptxk>把 Shadertoy 的体积云搬进 WinUI 3 窗口——ComputeSharp 的 HLSL 源生成器、SwapChainPanel 的 DPI 坑，以及 HDR 检测的正确姿势。</p> <div class="meta" data-astro-cid-7jjqptxk> <div class="tags" data-astro-cid-7jjqptxk> <span class="tag tag--cy" data-astro-cid-7jjqptxk>图形学</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>ComputeSharp</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>WinUI 3</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>HLSL</span> </div>  </div> </header> <div class="prose" data-astro-cid-7jjqptxk> <p><a href="https://github.com/Johnwikix/ComputeSharpDemo">ComputeSharpDemo</a> 这个项目起源于一个朴素的想法：<strong>在 C# 里写 shader，像写普通方法一样</strong>。ComputeSharp 通过源生成器把这个想法变成了现实——你在 C# 里写一个 <code>IComputeShader&#x3C;T></code> 结构体，编译期它就被翻译成 HLSL，跑在 D3D12 compute pipeline 上。</p>
-<h2 id="源生成器的魔法">源生成器的魔法</h2>
-<p>核心体验是这样的：</p>
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ComputeSharp: 在 C# 里写 D3D12 compute shader | sennpei.studio</title><meta name="description" content="HLSL 源生成器, Shadertoy 移植坐标坑, SwapChainPanel DPI, HDR 边角.  ComputeSharpDemo 三个内置 shader."><meta name="generator" content="Astro v5.18.2"><meta property="og:title" content="ComputeSharp: 在 C# 里写 D3D12 compute shader | sennpei.studio"><meta property="og:description" content="HLSL 源生成器, Shadertoy 移植坐标坑, SwapChainPanel DPI, HDR 边角.  ComputeSharpDemo 三个内置 shader."><meta property="og:type" content="website"><link rel="icon" type="image/svg+xml" href="/my-blog/favicon.svg"><link rel="alternate" type="application/rss+xml" title="sennpei.studio" href="/my-blog/rss.xml"><meta name="theme-color" content="#0a0a0a"><link rel="stylesheet" href="/my-blog/_astro/about.Bqf0Fy38.css"></head> <body> <header class="nav"> <div class="nav-in"> <a class="brand" href="/my-blog/"> <span class="brand-name">sennpei</span><span style="color: var(--dim);">.</span><span style="color: var(--ink);">studio</span> </a> <nav class="menu" aria-label="primary"> <ul> <li> <a href="/my-blog/blog" class="active"> log </a> </li><li> <a href="/my-blog/projects" class> rack </a> </li><li> <a href="/my-blog/about" class> about </a> </li> </ul> </nav> <span class="menu-spacer"></span> <span class="menu-tag">/my-blog</span> </div> </header> <main>  <article class="shell-narrow"> <div class="page-head"> <p style="font-size: 0.85rem; color: var(--dim); margin-bottom: 0.4rem;"> 2026-09-24 · graphics · computesharp · winui3 · hlsl </p> <h1>ComputeSharp: 在 C# 里写 D3D12 compute shader</h1> <p class="sub">HLSL 源生成器, Shadertoy 移植坐标坑, SwapChainPanel DPI, HDR 边角.  ComputeSharpDemo 三个内置 shader.</p> </div> <div class="prose"> <h1 id="computesharp">ComputeSharp</h1>
+<h2 id="想法">想法</h2>
+<p>在 C# 里写 shader, 像写普通方法.  ComputeSharp 用源生成器做到: 你写 <code>IComputeShader&#x3C;T></code>, 编译期翻译成 HLSL, 跑在 D3D12 compute pipeline.</p>
 <pre class="astro-code ayu-dark" style="background-color:#0d1017;color:#bfbdb6; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="csharp"><code><span class="line"><span style="color:#BFBDB6">[</span><span style="color:#59C2FF">ThreadGroupSize</span><span style="color:#BFBDB6">(DefaultThreadGroupSizes</span><span style="color:#F29668">.</span><span style="color:#BFBDB6">X)]</span></span>
 <span class="line"><span style="color:#FF8F40">public</span><span style="color:#FF8F40"> readonly</span><span style="color:#FF8F40"> partial</span><span style="color:#FF8F40"> struct</span><span style="color:#59C2FF"> ProteanClouds</span><span style="color:#BFBDB6">(</span><span style="color:#FF8F40">float</span><span style="color:#59C2FF"> time</span><span style="color:#BFBDB6B3">,</span><span style="color:#59C2FF"> float2</span><span style="color:#59C2FF"> res</span><span style="color:#BFBDB6B3">,</span><span style="color:#59C2FF"> ReadWriteTexture2D</span><span style="color:#BFBDB6">&#x3C;</span><span style="color:#59C2FF">float4</span><span style="color:#BFBDB6">> </span><span style="color:#59C2FF">output</span><span style="color:#BFBDB6">)</span></span>
 <span class="line"><span style="color:#BFBDB6B3">    :</span><span style="color:#59C2FF"> IComputeShader</span></span>
@@ -81,36 +8,38 @@
 <span class="line"><span style="color:#FF8F40">    public</span><span style="color:#FF8F40"> void</span><span style="color:#FFB454"> Execute</span><span style="color:#BFBDB6">()</span></span>
 <span class="line"><span style="color:#BFBDB6">    {</span></span>
 <span class="line"><span style="color:#59C2FF">        float2</span><span style="color:#59C2FF"> uv</span><span style="color:#F29668"> =</span><span style="color:#BFBDB6"> (</span><span style="color:#59C2FF">float2</span><span style="color:#BFBDB6">)ThreadIds</span><span style="color:#F29668">.</span><span style="color:#BFBDB6">XY </span><span style="color:#F29668">/</span><span style="color:#BFBDB6"> res</span><span style="color:#BFBDB6B3">;</span></span>
-<span class="line"><span style="color:#5A6673;font-style:italic">        // raymarch、fbm、调色……全部 C# 语法</span></span>
+<span class="line"><span style="color:#5A6673;font-style:italic">        // fbm, raymarch, 调色</span></span>
 <span class="line"><span style="color:#BFBDB6">        output[ThreadIds</span><span style="color:#F29668">.</span><span style="color:#BFBDB6">XY] </span><span style="color:#F29668">=</span><span style="color:#F29668"> new</span><span style="color:#59C2FF"> float4</span><span style="color:#BFBDB6">(color</span><span style="color:#BFBDB6B3">,</span><span style="color:#D2A6FF"> 1f</span><span style="color:#BFBDB6">)</span><span style="color:#BFBDB6B3">;</span></span>
 <span class="line"><span style="color:#BFBDB6">    }</span></span>
 <span class="line"><span style="color:#BFBDB6">}</span></span></code></pre>
-<p>没有 <code>.hlsl</code> 文件、没有运行时字符串拼接、没有手动管 <code>ConstantBuffer</code> 布局。捕获的局部变量自动变成 shader 常量，类型系统直接映射 HLSL 类型。写错了编译期就报错，而不是黑屏之后对着像素调试器发呆。</p>
-<h2 id="移植-shadertoy三次坐标变换的学费">移植 Shadertoy：三次坐标变换的学费</h2>
-<p>项目里内置的第一个 shader 是 nimitz 的 <strong>Protean Clouds</strong>（体积云 raymarching，CC BY-NC-SA 3.0）。移植本身不难，难的是坐标系换算的每一处细节：</p>
-<ul>
-<li>Shadertoy 的 <code>fragCoord</code> 原点在<strong>左下角</strong>，D3D 的像素坐标原点在<strong>左上角</strong>——Y 要翻转。</li>
-<li>Shadertoy 的 <code>iMouse</code> 语义要自己设计映射，compute shader 没有内建的输入状态。</li>
-<li>通道纹理（iChannel0）需要自己生成或者替换成程序化噪声。</li>
-</ul>
-<p>第二个大坑是 <strong>Apple Music 风格背景</strong>的移植。原版（Lyricify-Backgrounds）是像素 shader 里的 UV 弯曲（pinch mesh），但 ComputeSharp 只有 compute shader——没有插值器帮你做 UV 逆变换。解法是对每个像素做<strong>牛顿迭代求逆变换</strong>：把正向 pinch 函数当成方程，迭代解出「这个像素来自哪个 UV」。另一个伴随的 77-tap 可分离高斯模糊也顺手实现了。</p>
-<h2 id="swapchainpanel-的-dpi-坑">SwapChainPanel 的 DPI 坑</h2>
-<p>WinUI 3 的 <code>SwapChainPanel</code> 有个知名问题（<a href="https://github.com/microsoft/microsoft-ui-xaml/issues/8219">winui#8219</a>）：DPI 变化时它给你的尺寸是 DIP 而不是物理像素。解法是维护<strong>双份尺寸方案</strong>——物理像素尺寸用于 swap chain 创建和 shader dispatch，DIP 尺寸用于布局。另外我用一个 500ms 节流的兜底定时器轮询 DPI 变化，因为依赖单一事件在某些显示器热插拔时序下会漏。</p>
-<h2 id="hdr比想象中更碎">HDR：比想象中更碎</h2>
-<p>HDR 支持是典型的「80% 时间花在 20% 的边角」：</p>
-<ul>
-<li><code>DisplayInformation</code> (WinRT) 和 DXGI output 查询<strong>各说各话</strong>，需要两边交叉验证；</li>
-<li>窗口跨显示器拖动时要重新评估；</li>
-<li>用户在 Windows 设置里开关 HDR 时，HDR 状态变更事件不一定及时——最终也是事件 + 兜底轮询双保险。</li>
-</ul>
-<p>输出侧还要处理 FP16 swap chain、色彩空间（ scRGB vs HDR10）和 SDR 白电平映射。这些经验后来直接喂给了 DXRDemo 的 HDR10 输出。</p>
-<h2 id="插件式-shader-目录">插件式 shader 目录</h2>
-<p>最后的架构是目录式的：每个 shader 一个入口类，注册进 catalog。新增一个 shader 大概动三个文件，不碰主窗口逻辑。目前目录里有：</p>
+<p>没 <code>.hlsl</code>, 没运行时字符串拼接, 没手动管 <code>ConstantBuffer</code> 布局.  类型系统直接映射 HLSL.  错了编译期报错, 不是黑屏之后对着像素调试器发呆.</p>
+<h2 id="shadertoy-移植--三个">Shadertoy 移植.  三个</h2>
+<p>移植 Shadertoy 到 Compute Shader 都有坐标坑:</p>
 <ol>
-<li><strong>Protean Clouds</strong> — 体积云 raymarching</li>
-<li><strong>Ray Trace</strong> — 蒙特卡洛路径追踪（可调弹射次数、时域累积或 RELAX 降噪）</li>
-<li><strong>Apple Music Inspired</strong> — 牛顿迭代逆变换版</li>
+<li>Shadertoy <code>fragCoord</code> 原点在<strong>左下</strong>, D3D 像素坐标<strong>左上</strong> — Y 翻转.</li>
+<li><code>iMouse</code> 语义自己设计映射, compute shader 没内建输入状态.</li>
+<li>iChannel 纹理要么自己生成要么替换成程序化噪声.</li>
 </ol>
-<h2 id="结语">结语</h2>
-<p>ComputeSharp 的意义在于<strong>降低了「试一试」的门槛</strong>。以前一个 shader 想法从萌生到上屏要配一整套 C++ 工程；现在它就是 C# 解决方案里的一个 struct。对教学、原型、还有给播放器做 shader 背景这种需求，体验是碾压级的。</p>
-<p>项目 MIT 开源，附带 <code>hdr-pitfalls.md</code> 和 <code>ADD_NEW_SHADER.md</code> 两份踩坑文档——都是学费换来的。</p> </div> <nav class="pager" aria-label="文章导航" data-astro-cid-7jjqptxk> <a class="pn" href="/my-blog/blog/original-sound-architecture/" data-astro-cid-7jjqptxk> <span class="dir mono" data-astro-cid-7jjqptxk>← 较早</span> <span class="t" data-astro-cid-7jjqptxk>把音频管线拆进独立进程：原音 HQ 播放器的架构决策</span> </a> <a class="pn pn--next" href="/my-blog/blog/dxr-from-scratch/" data-astro-cid-7jjqptxk> <span class="dir mono" data-astro-cid-7jjqptxk>较新 →</span> <span class="t" data-astro-cid-7jjqptxk>从零实现 DXR 路径追踪：雨后便利店的两百万个三角形</span> </a> </nav> </article>  </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="shell" data-astro-cid-sz7xmlte> <canvas id="footer-spec" class="spectrum " height="56" role="img" aria-label="音频频谱装饰动画" data-astro-cid-zsbzwz7w></canvas>  <script type="module">const A=window.matchMedia("(prefers-reduced-motion: reduce)").matches;function R(e){const o=e.getContext("2d");if(!o)return;const r=42,i=new Float32Array(r),a=Math.min(window.devicePixelRatio,2);function p(){e.width=Math.floor(e.clientWidth*a),e.height=Math.floor(e.clientHeight*a)}p(),window.addEventListener("resize",p,{passive:!0});function y(c,d){const n=c/r,s=Math.exp(-n*4),u=Math.sin(d*(.9+n*2.2)+c*.7)*.5+Math.sin(d*(2.1+n*3.7)+c*1.9)*.3+Math.sin(d*(4.3+n*1.1)+c*.3)*.2,h=.18+.82*(s*.9+.25)*(.5+.5*u);return Math.min(1,Math.max(.03,h))}performance.now();function b(c){const d=c/1e3,n=e.width,s=e.height,u=Math.max(1,Math.floor(n*.006)),h=(n-u*(r-1))/r;for(let t=0;t<r;t++){const l=A?.35:y(t,d);i[t]=l>i[t]?i[t]+(l-i[t])*.55:i[t]*.92}o.clearRect(0,0,n,s);for(let t=0;t<r;t++){const l=i[t],x=Math.max(2*a,l*(s-4*a)),S=t*(h+u),f=s-x,m=o.createLinearGradient(0,f,0,s),M=t/r,g=Math.round(110+57*M),w=Math.round(231+-92*M),$=Math.round(240+10*M);m.addColorStop(0,`rgba(${g},${w},${$},${.55+l*.45})`),m.addColorStop(1,`rgba(${g},${w},${$},0.14)`),o.fillStyle=m,o.beginPath(),o.roundRect(S,f,h,x,2*a),o.fill(),o.fillStyle=`rgba(${g},${w},${$},${.8})`,o.fillRect(S,f,h,1.5*a)}requestAnimationFrame(b)}requestAnimationFrame(b)}document.querySelectorAll("canvas.spectrum").forEach(e=>{e.dataset.live||(e.dataset.live="1",R(e))});</script> <div class="readout mono" data-astro-cid-sz7xmlte> <span data-astro-cid-sz7xmlte>44.1k → 768kHz</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span id="fps-readout" data-astro-cid-sz7xmlte>-- fps</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span data-astro-cid-sz7xmlte>© 2026 SENNPEI STUDIO</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="/my-blog/rss.xml" class="lnk" data-astro-cid-sz7xmlte>RSS</a> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="https://github.com/Johnwikix" target="_blank" rel="noopener" class="lnk" data-astro-cid-sz7xmlte>GITHUB</a> </div> </div> </footer>  <script type="module">const e=document.getElementById("fps-readout");e&&document.addEventListener("signal:fps",(t=>{e.textContent=`${t.detail.fps} fps`}));</script> </body></html> 
+<p>第二个大坑是 Apple Music 风格背景.  原版 (Lyricify-Backgrounds) 是像素 shader 里做 UV 弯曲 (pinch mesh), 但 ComputeSharp 只有 compute shader — 没插值器帮你做 UV 逆变换.</p>
+<p>解法: 对每个像素做<strong>牛顿迭代求逆变换</strong>.  把正向 pinch 当成方程, 迭代解出”这个像素来自哪个 UV”.  顺便实现 77-tap 可分离高斯模糊.</p>
+<h2 id="swapchainpanel-dpi">SwapChainPanel DPI</h2>
+<p>WinUI 3 的 <code>SwapChainPanel</code> 有 <a href="https://github.com/microsoft/microsoft-ui-xaml/issues/8219">winui#8219</a>: DPI 变化时它给的尺寸是 DIP 而不是物理像素.</p>
+<p>方案: 维护双份尺寸.  物理像素用于 swap chain 创建和 shader dispatch, DIP 用于布局.  另加一个 500ms 节流的兜底定时器轮询 DPI 变化 — 单一事件在某些显示器热插拔时序下会漏.</p>
+<h2 id="hdr--比想象碎">HDR.  比想象碎</h2>
+<p>80% 时间花在 20% 边角:</p>
+<ul>
+<li><code>DisplayInformation</code> (WinRT) 和 DXGI output 查询<strong>各说各话</strong>.  交叉验证.</li>
+<li>窗口跨显示器拖动重新评估.</li>
+<li>Windows 设置里开关 HDR 时, 事件不一定及时.  事件 + 兜底轮询双保险.</li>
+</ul>
+<p>输出侧: FP16 swap chain, 色彩空间 (scRGB vs HDR10), SDR 白电平映射.  后来这套经验直接喂给了 DXRDemo 的 HDR10 输出.</p>
+<h2 id="插件目录">插件目录</h2>
+<p>每个 shader 一个入口类, 注册进 catalog.  新增 shader 大约动 3 个文件, 不碰主窗口.</p>
+<p>内置:</p>
+<ol>
+<li><strong>Protean Clouds</strong> — nimitz 体积云 raymarching, CC BY-NC-SA 3.0.</li>
+<li><strong>Ray Trace</strong> — 蒙特卡洛路径追踪.  可调弹射次数, 时域累积或 RELAX 降噪.</li>
+<li><strong>Apple Music Inspired</strong> — 牛顿迭代逆变换版.</li>
+</ol>
+<h2 id="链接">链接</h2>
+<p>仓库: <a href="https://github.com/Johnwikix/ComputeSharpDemo">https://github.com/Johnwikix/ComputeSharpDemo</a>  MIT.  附 <code>hdr-pitfalls.md</code> 和 <code>ADD_NEW_SHADER.md</code>.</p> </div> <nav class="pager"> <a href="/my-blog/blog/original-sound-architecture/"> <div class="dir">← older</div> <div class="pager-t">Original-Sound-HQ-Player: 独立音频进程</div> </a> <a class="pager-next" href="/my-blog/blog/dxr-from-scratch/"> <div class="dir">newer →</div> <div class="pager-t">DXRDemo: 从零手搓 DXR 路径追踪</div> </a> </nav> </article>  </main> <footer class="footer"> <div class="footer-line"> <span>© 2026 sennpei.studio</span> <span class="footer-sep">·</span> <a href="/my-blog/rss.xml">rss</a> <span class="footer-sep">·</span> <a href="https://github.com/Johnwikix" target="_blank" rel="noopener">github.com/Johnwikix</a> <span class="footer-sep">·</span> <a href="mailto:906847109@qq.com">906847109@qq.com</a> </div> </footer> </body></html>
