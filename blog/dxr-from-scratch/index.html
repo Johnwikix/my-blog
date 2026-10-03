@@ -1,0 +1,104 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>从零实现 DXR 路径追踪：雨后便利店的两百万个三角形 · Sennpei Studio</title><meta name="description" content="不用现成渲染器，在 WinUI 3 里手搓 DXR 1.2 管线——glTF 加载、GGX + MIS、七层嵌套玻璃、NRD 降噪、DLSS/FSR/XeSS 与 HDR10。"><meta name="generator" content="Astro v5.18.2"><meta property="og:title" content="从零实现 DXR 路径追踪：雨后便利店的两百万个三角形 · Sennpei Studio"><meta property="og:description" content="不用现成渲染器，在 WinUI 3 里手搓 DXR 1.2 管线——glTF 加载、GGX + MIS、七层嵌套玻璃、NRD 降噪、DLSS/FSR/XeSS 与 HDR10。"><meta property="og:type" content="website"><link rel="icon" type="image/svg+xml" href="/my-blog/favicon.svg"><link rel="alternate" type="application/rss+xml" title="Sennpei Studio" href="/my-blog/rss.xml"><meta name="theme-color" content="#06070d"><link rel="stylesheet" href="/my-blog/_astro/about.BlrTMlrR.css">
+<link rel="stylesheet" href="/my-blog/_astro/_slug_.WH6SnyVn.css"></head> <body> <canvas id="nebula" aria-hidden="true" data-astro-cid-xaxozevl></canvas>  <script type="module">const o=document.getElementById("nebula"),E=window.matchMedia("(prefers-reduced-motion: reduce)").matches;if(o&&!E){const e=o.getContext("webgl",{antialias:!1,alpha:!1,powerPreference:"low-power"});if(e){let v=function(t,f){const l=e.createShader(t);return e.shaderSource(l,f),e.compileShader(l),l},d=function(){const t=Math.min(window.devicePixelRatio,2)*.5;o.width=Math.floor(window.innerWidth*t),o.height=Math.floor(window.innerHeight*t),e.viewport(0,0,o.width,o.height)},r=function(t){if(c+=(u-c)*.02,s+=(h-s)*.02,t-g>33){for(g=t,e.uniform2f(x,o.width,o.height),e.uniform1f(R,(t-p)/1e3),e.uniform2f(y,c,s),e.drawArrays(e.TRIANGLES,0,3),a.push(t);a.length>2&&a[0]<t-1e3;)a.shift();const f=a.length;document.dispatchEvent(new CustomEvent("signal:fps",{detail:{fps:f,dt:Math.round(t-p)%1e5}}))}n=requestAnimationFrame(r)};const w=`
+        attribute vec2 p;
+        void main() { gl_Position = vec4(p, 0.0, 1.0); }
+      `,b=`
+        precision mediump float;
+        uniform vec2 uRes;
+        uniform float uT;
+        uniform vec2 uM;
+
+        float hash(vec2 p) {
+          p = fract(p * vec2(234.34, 435.345));
+          p += dot(p, p + 34.23);
+          return fract(p.x * p.y);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float amp = 0.5;
+          mat2 rot = mat2(0.87, -0.49, 0.49, 0.87);
+          for (int i = 0; i < 5; i++) {
+            v += amp * noise(p);
+            p = rot * p * 2.03;
+            amp *= 0.5;
+          }
+          return v;
+        }
+
+        void main() {
+          vec2 uv = gl_FragCoord.xy / uRes.xy;
+          vec2 asp = vec2(uRes.x / uRes.y, 1.0);
+          vec2 st = uv * asp;
+
+          float t = uT * 0.03;
+          vec2 drift = uM * 0.12;
+
+          // domain warp
+          vec2 q = vec2(fbm(st * 1.6 + t), fbm(st * 1.6 - t * 0.7 + 4.7));
+          vec2 r = vec2(fbm(st * 2.2 + q * 1.4 + vec2(1.7, 9.2) + t * 0.6 + drift),
+                        fbm(st * 2.2 + q * 1.4 + vec2(8.3, 2.8) - t * 0.4 + drift));
+          float n = fbm(st * 1.4 + r * 1.8);
+
+          // palette: indigo space, violet clouds, cyan ridges
+          vec3 space = vec3(0.024, 0.028, 0.055);
+          vec3 violet = vec3(0.24, 0.17, 0.42);
+          vec3 cyan   = vec3(0.16, 0.55, 0.62);
+
+          vec3 col = space;
+          col = mix(col, violet * 0.85, smoothstep(0.35, 0.9, n));
+          col = mix(col, cyan * 0.6, smoothstep(0.62, 0.95, n * r.x * 1.6));
+
+          // scan bands — analyzer breathing, very subtle
+          float band = 0.96 + 0.04 * sin(uv.y * 220.0 + uT * 1.4 + n * 6.0);
+          col *= band;
+
+          // vignette
+          float vig = smoothstep(1.25, 0.35, length(uv - vec2(0.5, 0.45)));
+          col *= mix(0.72, 1.0, vig);
+
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,i=e.createProgram();e.attachShader(i,v(e.VERTEX_SHADER,w)),e.attachShader(i,v(e.FRAGMENT_SHADER,b)),e.linkProgram(i),e.useProgram(i);const A=e.createBuffer();e.bindBuffer(e.ARRAY_BUFFER,A),e.bufferData(e.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),e.STATIC_DRAW);const m=e.getAttribLocation(i,"p");e.enableVertexAttribArray(m),e.vertexAttribPointer(m,2,e.FLOAT,!1,0,0);const x=e.getUniformLocation(i,"uRes"),R=e.getUniformLocation(i,"uT"),y=e.getUniformLocation(i,"uM");d(),window.addEventListener("resize",d,{passive:!0});let c=0,s=0,u=0,h=0;window.addEventListener("pointermove",t=>{u=t.clientX/window.innerWidth*2-1,h=t.clientY/window.innerHeight*2-1},{passive:!0});const p=performance.now();let n=0,g=0;const a=[];n=requestAnimationFrame(r),document.addEventListener("visibilitychange",()=>{document.hidden?cancelAnimationFrame(n):n=requestAnimationFrame(r)})}}</script> <header class="nav" data-astro-cid-dmqpwcec> <div class="shell nav-in" data-astro-cid-dmqpwcec> <a class="brand" href="/my-blog/" data-astro-cid-dmqpwcec> <span class="brand-mark" aria-hidden="true" data-astro-cid-dmqpwcec></span> <span class="brand-text mono" data-astro-cid-dmqpwcec>SENNPEI<span class="brand-dot" data-astro-cid-dmqpwcec>.</span>STUDIO</span> </a> <nav aria-label="主导航" data-astro-cid-dmqpwcec> <ul data-astro-cid-dmqpwcec> <li data-astro-cid-dmqpwcec> <a href="/my-blog/blog" class="active" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>日志</span> <span class="en mono" data-astro-cid-dmqpwcec>LOG</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/projects" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>机架</span> <span class="en mono" data-astro-cid-dmqpwcec>RACK</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/about" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>关于</span> <span class="en mono" data-astro-cid-dmqpwcec>ABOUT</span> </a> </li> </ul> </nav> <div class="live mono" title="本站由静态生成，正在渲染中——就像所有好东西一样" data-astro-cid-dmqpwcec> <span class="dot" aria-hidden="true" data-astro-cid-dmqpwcec></span>REC
+</div> </div> </header>  <main>  <article class="shell-narrow" data-astro-cid-7jjqptxk> <header class="post-head" data-astro-cid-7jjqptxk> <p class="eyebrow" data-astro-cid-7jjqptxk>// ENTRY · <span class="sig" data-astro-cid-7jjqptxk>2026-09-30</span></p> <h1 data-astro-cid-7jjqptxk>从零实现 DXR 路径追踪：雨后便利店的两百万个三角形</h1> <p class="desc" data-astro-cid-7jjqptxk>不用现成渲染器，在 WinUI 3 里手搓 DXR 1.2 管线——glTF 加载、GGX + MIS、七层嵌套玻璃、NRD 降噪、DLSS/FSR/XeSS 与 HDR10。</p> <div class="meta" data-astro-cid-7jjqptxk> <div class="tags" data-astro-cid-7jjqptxk> <span class="tag tag--cy" data-astro-cid-7jjqptxk>图形学</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>DXR</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>路径追踪</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>.NET</span> </div>  </div> </header> <div class="prose" data-astro-cid-7jjqptxk> <p><a href="https://github.com/Johnwikix/DXRDemo">DXRDemo</a> 的默认场景叫「雨后便利店」：Blender 里建的模型，约 200 万三角形、3200 个实例、24 种材质、8 盏灯。选这个场景不是为了好看（虽然确实好看），而是因为它同时踩中了路径追踪所有难啃的部分：发光字、湿地面反射、货架上的玻璃瓶。</p>
+<p>这篇文章过一遍从零手搓 DXR 管线的路线图。「从零」的意思是：基于 Vortice.Direct3D12 手写绑定，不用现成的渲染框架。</p>
+<h2 id="管线骨架">管线骨架</h2>
+<p>D3D12 的显式 API 在 raytracing 上的复杂度大概是光栅化的三倍。你需要搭的积木：</p>
+<ul>
+<li><strong>BLAS / TLAS</strong>：底层加速结构（每网格一份）+ 顶层加速结构（每实例一份变换）。BLAS 构建Tips：静态场景可以 <code>PREFER_FAST_TRACE</code> 一次建好不再碰。</li>
+<li><strong>Shader binding table (SBT)</strong>：把材质参数和 HLSL 函数绑到射线组上。每个实例 × 每个 hit group 一条记录，布局对齐（8/16 字节）错一点就是驱动层的玄学崩溃。</li>
+<li><strong>根签名分治</strong>：全局资源（TLAS、输出纹理）走全局根签名，材质局部数据走 SBT 局部根签名。</li>
+</ul>
+<p>shader 侧直接上 <strong>SM 6.9 / DXR 1.2</strong>（<code>DispatchRays</code> 的新特性），驱动不支持时自动降级 lib_6_5，有 SER（shader execution reordering）就用——玻璃多的场景 SER 的收益肉眼可见。</p>
+<h2 id="gltf看着简单细节要命">glTF：看着简单，细节要命</h2>
+<p>用 SharpGLTF 加载 glTF 2.0：节点层级、PBR metallic-roughness、贴图、KHR_punctual_lights 扩展。真正费时间的是坐标系（glTF 右手 Y-up）、切线空间重建、以及索引/顶点格式到 GPU 结构体的逐字节对齐。</p>
+<h2 id="材质ggx--mis--一座玻璃山">材质：GGX + MIS + 一座玻璃山</h2>
+<p>核心积分器是标准的：<strong>GGX 微表面 BRDF + 多重重要性采样 (MIS)</strong>——BSDF 采样和光源采样各出一部分样本，按幂权重合并，方差降得比实现成本快。</p>
+<p>最花心思的是<strong>玻璃</strong>。完整实现了 transmission / IOR / 体积材质：</p>
+<ul>
+<li>Snell 折射 + <strong>全内反射 (TIR)</strong>——出水进入空气时超过临界角的那束光必须正确处理；</li>
+<li><strong>Beer-Lambert 吸收</strong>——光在介质内按距离指数衰减，颜色由此而来；</li>
+<li>嵌套介电质最多<strong>七层</strong>——货架上一排酒瓶叠着看过去就是这个场景。</li>
+</ul>
+<p>调试玻璃的方式很原始但有效：2 SPP 输出对着 512 SPP 参考图算 RMSE，回归测试套件里这一项在重构后把误差降了约 63%。</p>
+<h2 id="降噪nrd-relax">降噪：NRD RELAX</h2>
+<p>2 SPP 的原始噪声没法看，接 <strong>NVIDIA NRD 4.17 的 RELAX</strong>（diffuse + specular 双通道）。NDK 是 native C++ 的，中间架了一层 C++/CLI 风格的桥接。NRD 的输入要求很严格：world-space normal、motion vector、view depth、roughness，一个不对就出现鬼影或色偏。时域累积作为无 NRD 硬件的退路也实现了。</p>
+<h2 id="超分三个都要">超分：三个都要</h2>
+<p>DLSS SR、DLSS Ray Reconstruction、FSR 3.1、XeSS 全部接入，外加一个统一的 1–100% 渲染比例滑杆。动机很实际：不同机器的硬件联盟不同，统一抽象层让「渲染分辨率」和「显示分辨率」彻底解耦。80 种上采样 × 降噪 × HDR 的组合进了诊断套件自动跑——这一步救过好几次驱动更新引入的回归。</p>
+<h2 id="hdr10-与落日余晖">HDR10 与落日余晖</h2>
+<p>显示侧支持 HDR10 输出（SDR 自动回退）。HDR 下的路径追踪是真正的甜点：灯箱的亮度不用压进 sRGB 的笼子里，湿地面反射的高光有真实的物理亮度。WinUI 3 的 Mica 背景和设置窗口（F1）这些 UX 细节也全配齐了——渲染 demo 也要有尊严。</p>
+<h2 id="已知限制">已知限制</h2>
+<p>诚实清单：静态场景（实例不能动）、不支持 Draco/KTX2 压缩、纹理视图上限 1024、还没有 ReSTIR 和 HDRI 环境。路还长，但两百万三角形已经在 60fps 了。</p>
+<hr>
+<p>完整源码、构建说明和诊断套件都在仓库里。如果你也在 .NET 里折腾 DXR，希望这堆踩坑记录能帮你省几个晚上。</p> </div> <nav class="pager" aria-label="文章导航" data-astro-cid-7jjqptxk> <a class="pn" href="/my-blog/blog/computesharp-winui3/" data-astro-cid-7jjqptxk> <span class="dir mono" data-astro-cid-7jjqptxk>← 较早</span> <span class="t" data-astro-cid-7jjqptxk>用 C# 写 Compute Shader：ComputeSharp 实战笔记</span> </a> <a class="pn pn--next" href="/my-blog/blog/goodbye-hexo-signal-lab/" data-astro-cid-7jjqptxk> <span class="dir mono" data-astro-cid-7jjqptxk>较新 →</span> <span class="t" data-astro-cid-7jjqptxk>告别 Hexo：从零造一个「信号实验室」</span> </a> </nav> </article>  </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="shell" data-astro-cid-sz7xmlte> <canvas id="footer-spec" class="spectrum " height="56" role="img" aria-label="音频频谱装饰动画" data-astro-cid-zsbzwz7w></canvas>  <script type="module">const A=window.matchMedia("(prefers-reduced-motion: reduce)").matches;function R(e){const o=e.getContext("2d");if(!o)return;const r=42,i=new Float32Array(r),a=Math.min(window.devicePixelRatio,2);function p(){e.width=Math.floor(e.clientWidth*a),e.height=Math.floor(e.clientHeight*a)}p(),window.addEventListener("resize",p,{passive:!0});function y(c,d){const n=c/r,s=Math.exp(-n*4),u=Math.sin(d*(.9+n*2.2)+c*.7)*.5+Math.sin(d*(2.1+n*3.7)+c*1.9)*.3+Math.sin(d*(4.3+n*1.1)+c*.3)*.2,h=.18+.82*(s*.9+.25)*(.5+.5*u);return Math.min(1,Math.max(.03,h))}performance.now();function b(c){const d=c/1e3,n=e.width,s=e.height,u=Math.max(1,Math.floor(n*.006)),h=(n-u*(r-1))/r;for(let t=0;t<r;t++){const l=A?.35:y(t,d);i[t]=l>i[t]?i[t]+(l-i[t])*.55:i[t]*.92}o.clearRect(0,0,n,s);for(let t=0;t<r;t++){const l=i[t],x=Math.max(2*a,l*(s-4*a)),S=t*(h+u),f=s-x,m=o.createLinearGradient(0,f,0,s),M=t/r,g=Math.round(110+57*M),w=Math.round(231+-92*M),$=Math.round(240+10*M);m.addColorStop(0,`rgba(${g},${w},${$},${.55+l*.45})`),m.addColorStop(1,`rgba(${g},${w},${$},0.14)`),o.fillStyle=m,o.beginPath(),o.roundRect(S,f,h,x,2*a),o.fill(),o.fillStyle=`rgba(${g},${w},${$},${.8})`,o.fillRect(S,f,h,1.5*a)}requestAnimationFrame(b)}requestAnimationFrame(b)}document.querySelectorAll("canvas.spectrum").forEach(e=>{e.dataset.live||(e.dataset.live="1",R(e))});</script> <div class="readout mono" data-astro-cid-sz7xmlte> <span data-astro-cid-sz7xmlte>44.1k → 768kHz</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span id="fps-readout" data-astro-cid-sz7xmlte>-- fps</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span data-astro-cid-sz7xmlte>© 2026 SENNPEI STUDIO</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="/my-blog/rss.xml" class="lnk" data-astro-cid-sz7xmlte>RSS</a> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="https://github.com/Johnwikix" target="_blank" rel="noopener" class="lnk" data-astro-cid-sz7xmlte>GITHUB</a> </div> </div> </footer>  <script type="module">const e=document.getElementById("fps-readout");e&&document.addEventListener("signal:fps",(t=>{e.textContent=`${t.detail.fps} fps`}));</script> </body></html> 

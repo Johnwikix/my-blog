@@ -1,0 +1,114 @@
+<!DOCTYPE html><html lang="zh-CN"> <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>把音频管线拆进独立进程：原音 HQ 播放器的架构决策 · Sennpei Studio</title><meta name="description" content="为什么一个音乐播放器要把自己劈成两个进程——聊聊原音 HQ 播放器的独立音频进程、共享内存 IPC、WASAPI 独占模式与 float64 DSP 链。"><meta name="generator" content="Astro v5.18.2"><meta property="og:title" content="把音频管线拆进独立进程：原音 HQ 播放器的架构决策 · Sennpei Studio"><meta property="og:description" content="为什么一个音乐播放器要把自己劈成两个进程——聊聊原音 HQ 播放器的独立音频进程、共享内存 IPC、WASAPI 独占模式与 float64 DSP 链。"><meta property="og:type" content="website"><link rel="icon" type="image/svg+xml" href="/my-blog/favicon.svg"><link rel="alternate" type="application/rss+xml" title="Sennpei Studio" href="/my-blog/rss.xml"><meta name="theme-color" content="#06070d"><link rel="stylesheet" href="/my-blog/_astro/about.BlrTMlrR.css">
+<link rel="stylesheet" href="/my-blog/_astro/_slug_.WH6SnyVn.css"></head> <body> <canvas id="nebula" aria-hidden="true" data-astro-cid-xaxozevl></canvas>  <script type="module">const o=document.getElementById("nebula"),E=window.matchMedia("(prefers-reduced-motion: reduce)").matches;if(o&&!E){const e=o.getContext("webgl",{antialias:!1,alpha:!1,powerPreference:"low-power"});if(e){let v=function(t,f){const l=e.createShader(t);return e.shaderSource(l,f),e.compileShader(l),l},d=function(){const t=Math.min(window.devicePixelRatio,2)*.5;o.width=Math.floor(window.innerWidth*t),o.height=Math.floor(window.innerHeight*t),e.viewport(0,0,o.width,o.height)},r=function(t){if(c+=(u-c)*.02,s+=(h-s)*.02,t-g>33){for(g=t,e.uniform2f(x,o.width,o.height),e.uniform1f(R,(t-p)/1e3),e.uniform2f(y,c,s),e.drawArrays(e.TRIANGLES,0,3),a.push(t);a.length>2&&a[0]<t-1e3;)a.shift();const f=a.length;document.dispatchEvent(new CustomEvent("signal:fps",{detail:{fps:f,dt:Math.round(t-p)%1e5}}))}n=requestAnimationFrame(r)};const w=`
+        attribute vec2 p;
+        void main() { gl_Position = vec4(p, 0.0, 1.0); }
+      `,b=`
+        precision mediump float;
+        uniform vec2 uRes;
+        uniform float uT;
+        uniform vec2 uM;
+
+        float hash(vec2 p) {
+          p = fract(p * vec2(234.34, 435.345));
+          p += dot(p, p + 34.23);
+          return fract(p.x * p.y);
+        }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float amp = 0.5;
+          mat2 rot = mat2(0.87, -0.49, 0.49, 0.87);
+          for (int i = 0; i < 5; i++) {
+            v += amp * noise(p);
+            p = rot * p * 2.03;
+            amp *= 0.5;
+          }
+          return v;
+        }
+
+        void main() {
+          vec2 uv = gl_FragCoord.xy / uRes.xy;
+          vec2 asp = vec2(uRes.x / uRes.y, 1.0);
+          vec2 st = uv * asp;
+
+          float t = uT * 0.03;
+          vec2 drift = uM * 0.12;
+
+          // domain warp
+          vec2 q = vec2(fbm(st * 1.6 + t), fbm(st * 1.6 - t * 0.7 + 4.7));
+          vec2 r = vec2(fbm(st * 2.2 + q * 1.4 + vec2(1.7, 9.2) + t * 0.6 + drift),
+                        fbm(st * 2.2 + q * 1.4 + vec2(8.3, 2.8) - t * 0.4 + drift));
+          float n = fbm(st * 1.4 + r * 1.8);
+
+          // palette: indigo space, violet clouds, cyan ridges
+          vec3 space = vec3(0.024, 0.028, 0.055);
+          vec3 violet = vec3(0.24, 0.17, 0.42);
+          vec3 cyan   = vec3(0.16, 0.55, 0.62);
+
+          vec3 col = space;
+          col = mix(col, violet * 0.85, smoothstep(0.35, 0.9, n));
+          col = mix(col, cyan * 0.6, smoothstep(0.62, 0.95, n * r.x * 1.6));
+
+          // scan bands — analyzer breathing, very subtle
+          float band = 0.96 + 0.04 * sin(uv.y * 220.0 + uT * 1.4 + n * 6.0);
+          col *= band;
+
+          // vignette
+          float vig = smoothstep(1.25, 0.35, length(uv - vec2(0.5, 0.45)));
+          col *= mix(0.72, 1.0, vig);
+
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `,i=e.createProgram();e.attachShader(i,v(e.VERTEX_SHADER,w)),e.attachShader(i,v(e.FRAGMENT_SHADER,b)),e.linkProgram(i),e.useProgram(i);const A=e.createBuffer();e.bindBuffer(e.ARRAY_BUFFER,A),e.bufferData(e.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),e.STATIC_DRAW);const m=e.getAttribLocation(i,"p");e.enableVertexAttribArray(m),e.vertexAttribPointer(m,2,e.FLOAT,!1,0,0);const x=e.getUniformLocation(i,"uRes"),R=e.getUniformLocation(i,"uT"),y=e.getUniformLocation(i,"uM");d(),window.addEventListener("resize",d,{passive:!0});let c=0,s=0,u=0,h=0;window.addEventListener("pointermove",t=>{u=t.clientX/window.innerWidth*2-1,h=t.clientY/window.innerHeight*2-1},{passive:!0});const p=performance.now();let n=0,g=0;const a=[];n=requestAnimationFrame(r),document.addEventListener("visibilitychange",()=>{document.hidden?cancelAnimationFrame(n):n=requestAnimationFrame(r)})}}</script> <header class="nav" data-astro-cid-dmqpwcec> <div class="shell nav-in" data-astro-cid-dmqpwcec> <a class="brand" href="/my-blog/" data-astro-cid-dmqpwcec> <span class="brand-mark" aria-hidden="true" data-astro-cid-dmqpwcec></span> <span class="brand-text mono" data-astro-cid-dmqpwcec>SENNPEI<span class="brand-dot" data-astro-cid-dmqpwcec>.</span>STUDIO</span> </a> <nav aria-label="主导航" data-astro-cid-dmqpwcec> <ul data-astro-cid-dmqpwcec> <li data-astro-cid-dmqpwcec> <a href="/my-blog/blog" class="active" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>日志</span> <span class="en mono" data-astro-cid-dmqpwcec>LOG</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/projects" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>机架</span> <span class="en mono" data-astro-cid-dmqpwcec>RACK</span> </a> </li><li data-astro-cid-dmqpwcec> <a href="/my-blog/about" data-astro-cid-dmqpwcec> <span class="zh" data-astro-cid-dmqpwcec>关于</span> <span class="en mono" data-astro-cid-dmqpwcec>ABOUT</span> </a> </li> </ul> </nav> <div class="live mono" title="本站由静态生成，正在渲染中——就像所有好东西一样" data-astro-cid-dmqpwcec> <span class="dot" aria-hidden="true" data-astro-cid-dmqpwcec></span>REC
+</div> </div> </header>  <main>  <article class="shell-narrow" data-astro-cid-7jjqptxk> <header class="post-head" data-astro-cid-7jjqptxk> <p class="eyebrow" data-astro-cid-7jjqptxk>// ENTRY · <span class="sig" data-astro-cid-7jjqptxk>2026-09-18</span></p> <h1 data-astro-cid-7jjqptxk>把音频管线拆进独立进程：原音 HQ 播放器的架构决策</h1> <p class="desc" data-astro-cid-7jjqptxk>为什么一个音乐播放器要把自己劈成两个进程——聊聊原音 HQ 播放器的独立音频进程、共享内存 IPC、WASAPI 独占模式与 float64 DSP 链。</p> <div class="meta" data-astro-cid-7jjqptxk> <div class="tags" data-astro-cid-7jjqptxk> <span class="tag tag--cy" data-astro-cid-7jjqptxk>音频</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>WinUI 3</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>.NET</span><span class="tag tag--cy" data-astro-cid-7jjqptxk>架构</span> </div>  </div> </header> <div class="prose" data-astro-cid-7jjqptxk> <p>写一个能出声的播放器很容易，写一个敢自称 HQ 的播放器很难。这篇文章记录「原音 HQ 播放器」到目前为止最重要的一个架构决策：<strong>把整条音频管线从主进程里搬出去，塞进一个独立的 NativeAOT 进程</strong>。</p>
+<h2 id="问题从哪来">问题从哪来</h2>
+<p>播放器的天敌不是功能复杂度，而是「卡」。UI 掉帧、GC 停顿、窗口拖动、列表虚拟化——任何一个都可能在某个瞬间抢走 CPU 时间片。对普通应用这只是掉个帧；对独占模式的音频输出，这意味着<strong>缓冲区欠载（buffer underrun），直接可闻的爆音</strong>。</p>
+<p>.NET 的托管环境放大了这个问题：Gen2 GC 一次 STW 停顿完全可以超过一个音频周期的预算。你可以调 <code>GCServer</code>、可以 <code>GCConserveMemory</code>、可以把回调钉在专用线程上，但只要音频代码和 UI 跑在同一个进程里，你就永远在和运行时抢时间。</p>
+<p>所以结论其实很直接：</p>
+<blockquote>
+<p>音频 deserves 一个不被打扰的世界。</p>
+</blockquote>
+<h2 id="拆分方案">拆分方案</h2>
+<p>最终的结构是这样的：</p>
+<pre class="astro-code ayu-dark" style="background-color:#0d1017;color:#bfbdb6; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word;" tabindex="0" data-language="text"><code><span class="line"><span>┌─────────────────────────┐        ┌──────────────────────────┐</span></span>
+<span class="line"><span>│  主进程 (WinUI 3)        │        │  AudioPlayer 进程         │</span></span>
+<span class="line"><span>│                         │        │  (NativeAOT 单文件)        │</span></span>
+<span class="line"><span>│  UI / MVVM / 曲库 SQLite │◄──────►│  FFmpeg 解码              │</span></span>
+<span class="line"><span>│  频谱 / 歌词 / shader 背景 │ shared │  WASAPI 独占 / ASIO       │</span></span>
+<span class="line"><span>│                         │ memory │  DSD DoP / Native         │</span></span>
+<span class="line"><span>│                         │  ring  │  DSP: EQ / 卷积 / R128    │</span></span>
+<span class="line"><span>└─────────────────────────┘        └──────────────────────────┘</span></span></code></pre>
+<p>几个关键点：</p>
+<ul>
+<li><strong>音频进程用 NativeAOT 编译成单文件 exe</strong>。没有 JIT、没有 GC，启动即稳定。它只做一件事：从共享内存取指令、解码、过 DSP、喂给声卡。</li>
+<li><strong>IPC 走共享内存环形缓冲</strong>，不走命名管道序列化大块数据。控制指令和 PCM 数据分通道，进程间通信的延迟被压在微秒级。</li>
+<li><strong>主进程崩了音乐不停</strong>。UI 崩溃、调试重启，声音照常播放——这大概是这个设计最奢侈的副产品。</li>
+</ul>
+<h2 id="wasapi-独占模式值得吗">WASAPI 独占模式：值得吗</h2>
+<p>值得。独占模式下应用直接面对声卡硬件缓冲，绕过 Windows 的混音器（以及它隐式的重采样和音量处理）。配合<strong>同格式无缝切换</strong>（zero-gap），连续播放整张专辑时听不到任何格式转换的接缝。</p>
+<p>DSD 是另一条战线。DoP（DSD over PCM）把 DSD 流打包进 PCM 帧伪装传输，兼容性好；Native DSD 则需要 ASIO 通道直接吐原始比特流，还要处理 LSB1/MSB1/NER8 这些打包格式。两种我们都做了，因为一旦你走到 DSD256/512，每一个重采样步骤都是亵渎。</p>
+<h2 id="dspfloat64-不是玄学">DSP：float64 不是玄学</h2>
+<p>原音的 DSP 链跑在 <strong>float64</strong> 精度上：10 段参数 EQ、卷积校正（曲线编辑器或直接导入 WAV 脉冲响应，可绑定到输出设备）、EBU R128 响度归一化、crossfeed。</p>
+<p>用 float64 的理由很实在：<strong>级联滤波器的累积误差是真实存在的</strong>。单级 EQ 在 float32 下人耳不可闻，但五六级处理串下来、再经过卷积这种乘加密集的运算，低位噪声会开始积累。位深既然都保到 DSD512 了，DSP 中间精度没理由偷懒。</p>
+<p>卷积校正是最「发烧」的一个功能——导入你的耳机/房间测量脉冲响应，播放时实时做频域卷积修正。FFT 分块卷积的开销控制是难点，但这是另一个话题了。</p>
+<h2 id="代价">代价</h2>
+<p>诚实地说，这个架构的代价不小：</p>
+<ul>
+<li><strong>两套工程要维护</strong>。音频进程是 C++ 风格的 interop 代码（FFmpeg.AutoGen + WASAPI/ASIO 手写 P/Invoke），和主进程的 C# MVVM 世界完全是两种写法。</li>
+<li><strong>调试复杂度翻倍</strong>。跨进程断点、共享内存的竞态、崩溃转储要分别分析。</li>
+<li>看门狗逻辑（设备热插拔、独占模式被抢占后的自动恢复）写起来琐碎，但缺了它用户体验直接崩塌。</li>
+</ul>
+<p>但每次看到任务管理器里那个 2MB 的音频进程稳定跑着 3ms 音频周期、而 UI 进程随便怎么折腾都影响不到它的时候，我觉得这笔账是划算的。</p>
+<hr>
+<p>项目完全开源（AGPL-3.0）：<a href="https://github.com/Johnwikix/Original-Sound-HQ-Player">Original-Sound-HQ-Player</a>。从源码构建没有任何功能限制——这也是开源给发烧友的承诺。</p> </div> <nav class="pager" aria-label="文章导航" data-astro-cid-7jjqptxk> <span data-astro-cid-7jjqptxk></span> <a class="pn pn--next" href="/my-blog/blog/computesharp-winui3/" data-astro-cid-7jjqptxk> <span class="dir mono" data-astro-cid-7jjqptxk>较新 →</span> <span class="t" data-astro-cid-7jjqptxk>用 C# 写 Compute Shader：ComputeSharp 实战笔记</span> </a> </nav> </article>  </main> <footer class="footer" data-astro-cid-sz7xmlte> <div class="shell" data-astro-cid-sz7xmlte> <canvas id="footer-spec" class="spectrum " height="56" role="img" aria-label="音频频谱装饰动画" data-astro-cid-zsbzwz7w></canvas>  <script type="module">const A=window.matchMedia("(prefers-reduced-motion: reduce)").matches;function R(e){const o=e.getContext("2d");if(!o)return;const r=42,i=new Float32Array(r),a=Math.min(window.devicePixelRatio,2);function p(){e.width=Math.floor(e.clientWidth*a),e.height=Math.floor(e.clientHeight*a)}p(),window.addEventListener("resize",p,{passive:!0});function y(c,d){const n=c/r,s=Math.exp(-n*4),u=Math.sin(d*(.9+n*2.2)+c*.7)*.5+Math.sin(d*(2.1+n*3.7)+c*1.9)*.3+Math.sin(d*(4.3+n*1.1)+c*.3)*.2,h=.18+.82*(s*.9+.25)*(.5+.5*u);return Math.min(1,Math.max(.03,h))}performance.now();function b(c){const d=c/1e3,n=e.width,s=e.height,u=Math.max(1,Math.floor(n*.006)),h=(n-u*(r-1))/r;for(let t=0;t<r;t++){const l=A?.35:y(t,d);i[t]=l>i[t]?i[t]+(l-i[t])*.55:i[t]*.92}o.clearRect(0,0,n,s);for(let t=0;t<r;t++){const l=i[t],x=Math.max(2*a,l*(s-4*a)),S=t*(h+u),f=s-x,m=o.createLinearGradient(0,f,0,s),M=t/r,g=Math.round(110+57*M),w=Math.round(231+-92*M),$=Math.round(240+10*M);m.addColorStop(0,`rgba(${g},${w},${$},${.55+l*.45})`),m.addColorStop(1,`rgba(${g},${w},${$},0.14)`),o.fillStyle=m,o.beginPath(),o.roundRect(S,f,h,x,2*a),o.fill(),o.fillStyle=`rgba(${g},${w},${$},${.8})`,o.fillRect(S,f,h,1.5*a)}requestAnimationFrame(b)}requestAnimationFrame(b)}document.querySelectorAll("canvas.spectrum").forEach(e=>{e.dataset.live||(e.dataset.live="1",R(e))});</script> <div class="readout mono" data-astro-cid-sz7xmlte> <span data-astro-cid-sz7xmlte>44.1k → 768kHz</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span id="fps-readout" data-astro-cid-sz7xmlte>-- fps</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <span data-astro-cid-sz7xmlte>© 2026 SENNPEI STUDIO</span> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="/my-blog/rss.xml" class="lnk" data-astro-cid-sz7xmlte>RSS</a> <span class="sep" data-astro-cid-sz7xmlte>·</span> <a href="https://github.com/Johnwikix" target="_blank" rel="noopener" class="lnk" data-astro-cid-sz7xmlte>GITHUB</a> </div> </div> </footer>  <script type="module">const e=document.getElementById("fps-readout");e&&document.addEventListener("signal:fps",(t=>{e.textContent=`${t.detail.fps} fps`}));</script> </body></html> 
